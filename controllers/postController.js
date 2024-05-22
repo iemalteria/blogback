@@ -16,30 +16,41 @@ exports.createPost = async (req, res) => {
     const file = req.file;
 
     try {
+        if (!file) {
+            return res.status(400).json({ error: 'File is required' });
+        }
+
         const uploadedFile = await cloudinary.uploader.upload(file.path, {
             folder: 'uploads',
-            transformation: { quality: 'auto' } // Puedes agregar más transformaciones aquí
+            transformation: { quality: 'auto' }
         });
 
         const { secure_url, original_filename } = uploadedFile;
 
         const { token } = req.cookies;
+        if (!token) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+
         jwt.verify(token, secret, {}, async (err, info) => {
-            if (err) throw err;
+            if (err) {
+                console.error('JWT verification error:', err);
+                return res.status(403).json({ error: 'Invalid token' });
+            }
 
             const postDoc = await Post.create({
                 title,
                 summary,
                 content,
-                cover: secure_url, // Guardamos la URL de la imagen en Cloudinary
+                cover: secure_url,
                 author: info.id,
             });
 
-            res.status(201).json({ message: 'Post creado exitosamente', post: postDoc });
+            res.status(201).json({ message: 'Post created successfully', post: postDoc });
         });
     } catch (error) {
-        console.error('Error al subir archivo a Cloudinary:', error);
-        res.status(500).json('Error al subir archivo');
+        console.error('Error uploading file to Cloudinary:', error);
+        res.status(500).json({ error: 'Server error', details: error.message });
     }
 };
 
@@ -53,14 +64,14 @@ exports.updatePost = async (req, res) => {
         if (file) {
             const uploadedFile = await cloudinary.uploader.upload(file.path, {
                 folder: 'uploads',
-                transformation: { quality: 'auto' } // Puedes agregar más transformaciones aquí
+                transformation: { quality: 'auto' }
             });
 
             updatedPost = await Post.findByIdAndUpdate(id, {
                 title,
                 summary,
                 content,
-                cover: uploadedFile.secure_url, // Guardamos la URL de la imagen en Cloudinary
+                cover: uploadedFile.secure_url,
             }, { new: true });
         } else {
             updatedPost = await Post.findByIdAndUpdate(id, {
@@ -70,59 +81,80 @@ exports.updatePost = async (req, res) => {
             }, { new: true });
         }
 
+        if (!updatedPost) {
+            return res.status(404).json({ error: 'Post not found' });
+        }
+
         res.json(updatedPost);
     } catch (error) {
-        console.error('Error al actualizar el post:', error);
-        res.status(500).json('Error al actualizar el post');
+        console.error('Error updating post:', error);
+        res.status(500).json({ error: 'Server error', details: error.message });
     }
 };
 
 exports.getPosts = async (req, res) => {
-    res.json(
-        await Post.find()
+    try {
+        const posts = await Post.find()
             .populate('author', ['username'])
             .sort({ createdAt: -1 })
-            .limit(20)
-    );
+            .limit(20);
+
+        res.json(posts);
+    } catch (error) {
+        console.error('Error fetching posts:', error);
+        res.status(500).json({ error: 'Server error', details: error.message });
+    }
 };
 
 exports.getPostById = async (req, res) => {
     const { id } = req.params;
-    const postDoc = await Post.findById(id).populate('author', ['username']);
-    res.json(postDoc);
+
+    try {
+        const postDoc = await Post.findById(id).populate('author', ['username']);
+        if (!postDoc) {
+            return res.status(404).json({ error: 'Post not found' });
+        }
+
+        res.json(postDoc);
+    } catch (error) {
+        console.error('Error fetching post by ID:', error);
+        res.status(500).json({ error: 'Server error', details: error.message });
+    }
 };
 
 exports.deletePost = async (req, res) => {
     const { id } = req.params;
     const { token } = req.cookies;
 
+    if (!token) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+
     jwt.verify(token, secret, {}, async (err, info) => {
         if (err) {
-            return res.status(401).json('Unauthorized');
+            console.error('JWT verification error:', err);
+            return res.status(403).json({ error: 'Invalid token' });
         }
 
         try {
             const postDoc = await Post.findById(id);
             if (!postDoc) {
-                return res.status(404).json('Post not found');
+                return res.status(404).json({ error: 'Post not found' });
             }
 
-            const isAuthor = JSON.stringify(postDoc.author) === JSON.stringify(info.id);
-            if (!isAuthor) {
-                return res.status(403).json('Forbidden');
+            if (postDoc.author.toString() !== info.id) {
+                return res.status(403).json({ error: 'Forbidden' });
             }
 
-            // Eliminar la imagen de Cloudinary
             const public_id = postDoc.cover.split('/').slice(-1)[0].split('.')[0];
             await cloudinary.uploader.destroy(public_id);
 
-            // Eliminar el post de la base de datos
             await Post.deleteOne({ _id: id });
 
-            res.json('Post deleted successfully');
+            res.json({ message: 'Post deleted successfully' });
         } catch (error) {
             console.error('Error deleting post:', error);
-            res.status(500).json('Server error');
+            res.status(500).json({ error: 'Server error', details: error.message });
         }
     });
 };
