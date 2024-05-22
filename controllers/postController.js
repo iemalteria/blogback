@@ -1,7 +1,6 @@
 const Post = require('../models/Post');
 const cloudinary = require('cloudinary').v2;
 const jwt = require('jsonwebtoken');
-const fs = require('fs');
 const path = require('path');
 const secret = 'fdsajiofhjdsa0989085r342';
 
@@ -78,7 +77,6 @@ exports.updatePost = async (req, res) => {
     }
 };
 
-// Los métodos getPosts, getPostById y deletePost no requieren cambios para Cloudinary
 exports.getPosts = async (req, res) => {
     res.json(
         await Post.find()
