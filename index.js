@@ -10,7 +10,7 @@ const postRoutes = require('./routes/postRoutes');
 const app = express();
 
 const corsOptions = {
-    origin: ['https://backend-nu-virid.vercel.app', 'http://localhost:3000'],
+    origin: ['https://frontend-tau-blue.vercel.app', 'http://localhost:3000'],
     credentials: true, 
 };
 
